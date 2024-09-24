@@ -1,0 +1,99 @@
+
+<?xml version="1.0" ?>
+
+<mujoco>
+
+	<compiler angle="radian" coordinate="local" >
+	</compiler>
+
+
+	<option timestep="0.002">
+		<flag warmstart="enable"></flag>
+	</option>
+
+        <equality>
+        	   <weld body1="robot0:mocap" body2="tool" solimp="0.9 0.98 0.00005 0.1 6" solref="0.01 1"></weld>
+    	</equality>
+
+
+
+	
+	<include file="scene.xml"></include>
+
+
+	<worldbody>
+
+		<geom name="floor" pos="0 0 0" size="2 2 1" type="plane" material="floor_mat" condim="4"></geom>
+
+
+		<body mocap="true" name="robot0:mocap" pos="-0.236 0 1.23">
+			<geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0 1 1" size="0.04 0.09 0.06" type="box"></geom>
+		</body>
+	
+
+
+
+		<body pos="0 0 0.3 " name="table">
+
+			<geom size="1 1 0.3" type="box" mass="2000" material="table_mat" condim="4" solimp="0.9 0.99 0.0001 0.01 6" solref="0.006 1" margin="0.001"></geom>
+		
+			<body pos="-0.7 0 0.3" name="robot_ref">
+				<include file="myrobot.xml"></include>
+			</body>
+
+
+
+		
+		     <body name="target" pos="-0.2018 -0.0038 0.4" >
+
+			<geom name="target" pos="0 0 0.09" size="0.0005" rgba="0.7 0.5 1 1" type="sphere"></geom>
+			<site name="target" pos="0 0 0.09" size="0.0005" rgba="0.7 0.5 1 1" type="sphere"></site>
+			<body name="hole1" pos="0.156 0 0" >
+				<inertial mass="0.5" pos="0 0 0"></inertial>
+
+				<geom type="box" size="0.0955 0.0605 0.1" rgba="1 0 0 0.7" condim="1" solimp="0.9 0.99 0.0001 0.01 6" solref="0.006 1" margin="0.0001" friction="0.05 0.01 0"> </geom>
+			</body>
+
+			<body name="hole3" pos="-0.156 0 0">
+				<inertial mass="0.5" pos="0 0 0"></inertial>
+
+				<geom type="box" size="0.0955 0.0605 0.1" rgba="1 0 0 0.7" condim="1" solimp="0.9 0.99 0.0001 0.01 6" solref="0.006 1" margin="0.0001" friction="0.05 0.01 0"> </geom>
+			</body>
+
+			<body name="hole2" pos="0 -0.156 0">
+				<inertial mass="0.5" pos="0 0 0"></inertial>
+
+				<geom type="box" size="0.25 0.0955 0.1" rgba="1 0 0 0.7" condim="1" solimp="0.9 0.99 0.0001 0.01 6" solref="0.006 1" margin="0.0001" friction="0.05 0.01 0"> </geom>
+			</body>
+
+			<body name="hole4" pos="0 0.156 0">
+				<inertial mass="0.5" pos="0 0 0"></inertial>
+
+				<geom type="box" size="0.25 0.0955 0.1" rgba="1 0 0 0.7" condim="1" solimp="0.9 0.99 0.0001 0.01 6" solref="0.006 1" margin="0.0001" friction="0.05 0.01 0"> </geom>
+			</body>
+
+
+
+		    </body>
+
+		
+		</body>
+
+		<light directional="true" ambient="0.5 0.5 0.5" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3" castshadow="false" pos="0 0 4" dir="0 0 -1" name="light0"></light>
+
+
+	</worldbody>
+
+
+
+
+	<sensor>
+        	<force name="force_sensor" site="force_sensor_site"></force>
+
+	</sensor>
+
+
+
+
+</mujoco>
+

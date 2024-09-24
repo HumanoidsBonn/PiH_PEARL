@@ -25,7 +25,7 @@ class PyTorchModule(nn.Module, Serializable, metaclass=abc.ABCMeta):
         return np_dict
 
     def set_param_values_np(self, param_values):
-        torch_dict = OrderedDict()
+        torch_dict = OrderedDict() 
         for key, tensor in param_values.items():
             torch_dict[key] = ptu.from_numpy(tensor)
         self.load_state_dict(torch_dict)

@@ -27,7 +27,7 @@ class InPlacePathSampler(object):
     def shutdown_worker(self):
         pass
 
-    def obtain_samples(self, deterministic=False, max_samples=np.inf, max_trajs=np.inf, accum_context=True, resample=1):
+    def obtain_samples(self, deterministic=False, max_samples=np.inf, max_trajs=np.inf, accum_context=True, resample=1, render=False):
         """
         Obtains samples in the environment until either we reach either max_samples transitions or
         num_traj trajectories.
@@ -40,14 +40,26 @@ class InPlacePathSampler(object):
         n_trajs = 0
         while n_steps_total < max_samples and n_trajs < max_trajs:
             path = rollout(
-                self.env, policy, max_path_length=self.max_path_length, accum_context=accum_context)
+                self.env, policy, max_path_length=self.max_path_length, accum_context=accum_context,animated=render)
+## rollout produce only one trajectory
+# rollout will produce a dictionary , the values will be a numpy array of numpy arrays with shape (number of transitions which are the time index , dimension of action or observation ) 
             # save the latent context that generated this trajectory
-            path['context'] = policy.z.detach().cpu().numpy()
+            path['context'] = policy.z.detach().cpu().numpy() ### necessary to detach and use cpu to allow conversion to numpy
+             
+            #print(path['target_offsets'])
+####### added by me###
+        #    print ("in obtain samples fn, z==",policy.z)
+        #    print ("actions in path == ",path['actions']) 
+
+######################
+
+
             paths.append(path)
             n_steps_total += len(path['observations'])
             n_trajs += 1
             # don't we also want the option to resample z ever transition?
             if n_trajs % resample == 0:
                 policy.sample_z()
+        #print("paths ==",paths[0]['target_offsets'])
         return paths, n_steps_total
 

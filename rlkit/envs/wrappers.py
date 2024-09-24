@@ -50,7 +50,7 @@ class NormalizedBoxEnv(ProxyEnv, Serializable):
             env,
             reward_scale=1.,
             obs_mean=None,
-            obs_std=None,
+            obs_std=None,action_error=False
     ):
         # self._wrapped_env needs to be called first because
         # Serializable.quick_init calls getattr, on this class. And the
@@ -58,6 +58,7 @@ class NormalizedBoxEnv(ProxyEnv, Serializable):
         # Without setting this first, the call to self._wrapped_env would call
         # getattr again (since it's not set yet) and therefore loop forever.
         self._wrapped_env = env
+        self.action_error=action_error
         # Or else serialization gets delegated to the wrapped_env. Serialize
         # this env separately from the wrapped_env.
         self._serializable_initialized = False
@@ -76,8 +77,10 @@ class NormalizedBoxEnv(ProxyEnv, Serializable):
         self._reward_scale = reward_scale
         self._obs_mean = obs_mean
         self._obs_std = obs_std
-        ub = np.ones(self._wrapped_env.action_space.shape)
-        self.action_space = Box(-1 * ub, ub)
+        ub = np.ones(self._wrapped_env.action_space.shape)*2
+
+        self.action_space=np.zeros((3))
+
 
     def estimate_obs_stats(self, obs_batch, override_values=False):
         if self._obs_mean is not None and not override_values:
@@ -102,18 +105,38 @@ class NormalizedBoxEnv(ProxyEnv, Serializable):
         self._obs_mean = d["_obs_mean"]
         self._obs_std = d["_obs_std"]
         self._reward_scale = d["_reward_scale"]
-
+    '''
     def step(self, action):
-        lb = self._wrapped_env.action_space.low
-        ub = self._wrapped_env.action_space.high
-        scaled_action = lb + (action + 1.) * 0.5 * (ub - lb)
-        scaled_action = np.clip(scaled_action, lb, ub)
+        #lb = self._wrapped_env.action_space.low
+        #ub = self._wrapped_env.action_space.high
+        #scaled_action = lb + (action + 1.) * 0.5 * (ub - lb)
+        #scaled_action = np.clip(scaled_action, lb, ub)
 
-        wrapped_step = self._wrapped_env.step(scaled_action)
+     #   wrapped_step = self._wrapped_env.step(scaled_action)
+        wrapped_step = self._wrapped_env.step(action)
         next_obs, reward, done, info = wrapped_step
-        if self._should_normalize:
-            next_obs = self._apply_normalize_obs(next_obs)
-        return next_obs, reward * self._reward_scale, done, info
+      #  if self._should_normalize:
+       #     next_obs = self._apply_normalize_obs(next_obs)
+
+  ####### I changed the return to remove reward scale
+      #  return next_obs, reward * self._reward_scale, done, info
+        return next_obs, reward , done, info
+    '''
+
+
+    def step(self, action,sparse_reward=False):
+
+        if self.action_error:
+            wrapped_step = self._wrapped_env.step(action,sparse_reward=sparse_reward,action_error=True)
+
+        else:
+            wrapped_step = self._wrapped_env.step(action,sparse_reward=sparse_reward,action_error=False)
+
+        next_obs, reward, done, info = wrapped_step
+
+        return next_obs, reward , done, info
+
+
 
     def __str__(self):
         return "Normalized: %s" % self._wrapped_env

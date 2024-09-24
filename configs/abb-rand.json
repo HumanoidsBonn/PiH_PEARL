@@ -1,0 +1,30 @@
+{
+    "env_name": "abb-random",
+    "n_train_tasks":17 ,
+    "n_eval_tasks": 13,
+    "latent_size":2,
+    "net_size":200,
+
+    "env_params": {
+        "n_tasks": 30
+    }
+    ,
+    "algo_params": {
+        "meta_batch": 54 ,
+        "num_tasks_sample": 17,
+        "num_iterations":500,
+        "num_initial_steps": 10000,
+        "num_steps_prior": 16000,
+        "num_steps_posterior": 0,
+        "num_extra_rl_steps_posterior": 16000,
+        "num_train_steps_per_itr": 10,
+        "num_evals": 1,
+        "num_steps_per_eval": 1000,
+        "num_exp_traj_eval": 1,
+        "embedding_batch_size": 150,
+        "embedding_mini_batch_size": 150       
+    }
+}
+
+
+

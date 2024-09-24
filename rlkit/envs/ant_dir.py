@@ -4,6 +4,8 @@ from rlkit.envs.ant_multitask_base import MultitaskAntEnv
 from . import register_env
 
 
+
+
 @register_env('ant-dir')
 class AntDirEnv(MultitaskAntEnv):
 

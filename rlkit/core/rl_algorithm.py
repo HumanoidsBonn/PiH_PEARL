@@ -6,7 +6,7 @@ import gtimer as gt
 import numpy as np
 
 from rlkit.core import logger, eval_util
-from rlkit.data_management.env_replay_buffer import MultiTaskReplayBuffer
+from rlkit.data_management.env_replay_buffer import MultiTaskReplayBuffer,MultiTaskReplayBuffer_enc
 from rlkit.data_management.path_builder import PathBuilder
 from rlkit.samplers.in_place import InPlacePathSampler
 from rlkit.torch import pytorch_util as ptu
@@ -19,7 +19,7 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
             agent,
             train_tasks,
             eval_tasks,
-            meta_batch=64,
+            meta_batch=64, # number of tasks to average the gradient across
             num_iterations=100,
             num_train_steps_per_itr=1000,
             num_initial_steps=100,
@@ -30,9 +30,9 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
             num_evals=10,
             num_steps_per_eval=1000,
             batch_size=1024,
-            embedding_batch_size=1024,
+            embedding_batch_size=1024, 
             embedding_mini_batch_size=1024,
-            max_path_length=1000,
+            max_path_length=100, 
             discount=0.99,
             replay_buffer_size=1000000,
             reward_scale=1,
@@ -105,7 +105,7 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
                 self.train_tasks,
             )
 
-        self.enc_replay_buffer = MultiTaskReplayBuffer(
+        self.enc_replay_buffer = MultiTaskReplayBuffer_enc(
                 self.replay_buffer_size,
                 env,
                 self.train_tasks,
@@ -142,8 +142,8 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         meta-training loop
         '''
         self.pretrain()
-        params = self.get_epoch_snapshot(-1)
-        logger.save_itr_params(-1, params)
+        params = self.get_epoch_snapshot(-1) 
+        logger.save_itr_params(-1, params) 
         gt.reset()
         gt.set_def_unique(False)
         self._current_path_builder = PathBuilder()
@@ -153,8 +153,11 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
                 range(self.num_iterations),
                 save_itrs=True,
         ):
-            self._start_epoch(it_)
-            self.training_mode(True)
+
+
+            self._start_epoch(it_) 
+            print("Starting epoch {}".format(it_))
+            self.training_mode(True) 
             if it_ == 0:
                 print('collecting initial pool of data for train and eval')
                 # temp for evaluating
@@ -162,27 +165,35 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
                     self.task_idx = idx
                     self.env.reset_task(idx)
                     self.collect_data(self.num_initial_steps, 1, np.inf)
+
+                
             # Sample data from train tasks.
             for i in range(self.num_tasks_sample):
                 idx = np.random.randint(len(self.train_tasks))
                 self.task_idx = idx
                 self.env.reset_task(idx)
-                self.enc_replay_buffer.task_buffers[idx].clear()
+
+                if it_ >0:
+                    self.enc_replay_buffer.task_buffers[idx].clear()
+
 
                 # collect some trajectories with z ~ prior
-                if self.num_steps_prior > 0:
-                    self.collect_data(self.num_steps_prior, 1, np.inf)
+                    if self.num_steps_prior > 0:
+                        self.collect_data(self.num_steps_prior, 1, np.inf,epoch=it_)
                 # collect some trajectories with z ~ posterior
-                if self.num_steps_posterior > 0:
-                    self.collect_data(self.num_steps_posterior, 1, self.update_post_train)
-                # even if encoder is trained only on samples from the prior, the policy needs to learn to handle z ~ posterior
-                if self.num_extra_rl_steps_posterior > 0:
-                    self.collect_data(self.num_extra_rl_steps_posterior, 1, self.update_post_train, add_to_enc_buffer=False)
+                    if self.num_steps_posterior > 0:
+                        self.collect_data(self.num_steps_posterior, 1, self.update_post_train,epoch=it_)
+
+                    if self.num_extra_rl_steps_posterior > 0:
+                        self.collect_data(self.num_extra_rl_steps_posterior, 1, self.update_post_train, add_to_enc_buffer=False,epoch=it_)
+
+
 
             # Sample train tasks and compute gradient updates on parameters.
             for train_step in range(self.num_train_steps_per_itr):
                 indices = np.random.choice(self.train_tasks, self.meta_batch)
-                self._do_training(indices)
+
+                self._do_training(indices,epoch=it_)
                 self._n_train_steps_total += 1
             gt.stamp('train')
 
@@ -200,7 +211,7 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         """
         pass
 
-    def collect_data(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
+    def collect_data(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True,epoch=None):
         '''
         get trajectories from current env in batch mode with given policy
         collect complete trajectories until the number of collected transitions >= num_samples
@@ -213,15 +224,17 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         '''
         # start from the prior
         self.agent.clear_z()
-
+        
         num_transitions = 0
         while num_transitions < num_samples:
             paths, n_samples = self.sampler.obtain_samples(max_samples=num_samples - num_transitions,
                                                                 max_trajs=update_posterior_rate,
                                                                 accum_context=False,
                                                                 resample=resample_z_rate)
+
             num_transitions += n_samples
             self.replay_buffer.add_paths(self.task_idx, paths)
+
             if add_to_enc_buffer:
                 self.enc_replay_buffer.add_paths(self.task_idx, paths)
             if update_posterior_rate != np.inf:
@@ -232,6 +245,7 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
 
     def _try_to_eval(self, epoch):
         logger.save_extra_data(self.get_extra_data_to_save(epoch))
+ 
         if self._can_evaluate():
             self.evaluate(epoch)
 
@@ -307,23 +321,12 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         self._exploration_paths = []
         self._do_train_time = 0
         logger.push_prefix('Iteration #%d | ' % epoch)
-
     def _end_epoch(self):
         logger.log("Epoch Duration: {0}".format(
             time.time() - self._epoch_start_time
         ))
         logger.log("Started Training: {0}".format(self._can_train()))
         logger.pop_prefix()
-
-    ##### Snapshotting utils #####
-    def get_epoch_snapshot(self, epoch):
-        data_to_save = dict(
-            epoch=epoch,
-            exploration_policy=self.exploration_policy,
-        )
-        if self.save_environment:
-            data_to_save['env'] = self.training_env
-        return data_to_save
 
     def get_extra_data_to_save(self, epoch):
         """
@@ -333,19 +336,19 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         :return:
         """
         if self.render:
-            self.training_env.render(close=True)
+            self.env.render(close=True)
         data_to_save = dict(
             epoch=epoch,
         )
         if self.save_environment:
-            data_to_save['env'] = self.training_env
+            data_to_save['env'] = self.env
         if self.save_replay_buffer:
             data_to_save['replay_buffer'] = self.replay_buffer
         if self.save_algorithm:
             data_to_save['algorithm'] = self
         return data_to_save
 
-    def collect_paths(self, idx, epoch, run):
+    def collect_paths(self, idx, epoch, run,render=False):
         self.task_idx = idx
         self.env.reset_task(idx)
 
@@ -354,16 +357,18 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         num_transitions = 0
         num_trajs = 0
         while num_transitions < self.num_steps_per_eval:
-            path, num = self.sampler.obtain_samples(deterministic=self.eval_deterministic, max_samples=self.num_steps_per_eval - num_transitions, max_trajs=1, accum_context=True)
+            path, num = self.sampler.obtain_samples(deterministic=self.eval_deterministic, max_samples=self.num_steps_per_eval - num_transitions, max_trajs=1, accum_context=True,render=render) 
             paths += path
             num_transitions += num
             num_trajs += 1
-            if num_trajs >= self.num_exp_traj_eval:
+            if num_trajs >= self.num_exp_traj_eval: 
                 self.agent.infer_posterior(self.agent.context)
 
         if self.sparse_rewards:
             for p in paths:
-                sparse_rewards = np.stack(e['sparse_reward'] for e in p['env_infos']).reshape(-1, 1)
+
+                sparse_rewards = np.stack(e['is_success'] for e in p['env_infos']).reshape(-1, 1)
+
                 p['rewards'] = sparse_rewards
 
         goal = self.env._goal
@@ -382,19 +387,23 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         for idx in indices:
             all_rets = []
             for r in range(self.num_evals):
-                paths = self.collect_paths(idx, epoch, r)
+                paths = self.collect_paths(idx, epoch, r,render=False)
                 all_rets.append([eval_util.get_average_returns([p]) for p in paths])
             final_returns.append(np.mean([a[-1] for a in all_rets]))
+
             # record online returns for the first n trajectories
             n = min([len(a) for a in all_rets])
             all_rets = [a[:n] for a in all_rets]
             all_rets = np.mean(np.stack(all_rets), axis=0) # avg return per nth rollout
             online_returns.append(all_rets)
+ 
         n = min([len(t) for t in online_returns])
-        online_returns = [t[:n] for t in online_returns]
+
+        online_returns = [t[:n] for t in online_returns] 
         return final_returns, online_returns
 
     def evaluate(self, epoch):
+
         if self.eval_statistics is None:
             self.eval_statistics = OrderedDict()
 
@@ -412,6 +421,7 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
         # eval on a subset of train tasks for speed
         indices = np.random.choice(self.train_tasks, len(self.eval_tasks))
         eval_util.dprint('evaluating on {} train tasks'.format(len(indices)))
+
         ### eval train tasks with posterior sampled from the training replay buffer
         train_returns = []
         for idx in indices:
@@ -429,21 +439,30 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
 
             if self.sparse_rewards:
                 for p in paths:
-                    sparse_rewards = np.stack(e['sparse_reward'] for e in p['env_infos']).reshape(-1, 1)
+                    sparse_rewards = np.stack(e['is_success'] for e in p['env_infos']).reshape(-1, 1)
+
                     p['rewards'] = sparse_rewards
 
             train_returns.append(eval_util.get_average_returns(paths))
+
         train_returns = np.mean(train_returns)
+
         ### eval train tasks with on-policy data to match eval of test tasks
         train_final_returns, train_online_returns = self._do_eval(indices, epoch)
+
+
         eval_util.dprint('train online returns')
         eval_util.dprint(train_online_returns)
+
+
 
         ### test tasks
         eval_util.dprint('evaluating on {} test tasks'.format(len(self.eval_tasks)))
         test_final_returns, test_online_returns = self._do_eval(self.eval_tasks, epoch)
         eval_util.dprint('test online returns')
         eval_util.dprint(test_online_returns)
+
+
 
         # save the final posterior
         self.agent.log_diagnostics(self.eval_statistics)
@@ -452,9 +471,13 @@ class MetaRLAlgorithm(metaclass=abc.ABCMeta):
             self.env.log_diagnostics(paths, prefix=None)
 
         avg_train_return = np.mean(train_final_returns)
+
         avg_test_return = np.mean(test_final_returns)
+
         avg_train_online_return = np.mean(np.stack(train_online_returns), axis=0)
+
         avg_test_online_return = np.mean(np.stack(test_online_returns), axis=0)
+
         self.eval_statistics['AverageTrainReturn_all_train_tasks'] = train_returns
         self.eval_statistics['AverageReturn_all_train_tasks'] = avg_train_return
         self.eval_statistics['AverageReturn_all_test_tasks'] = avg_test_return

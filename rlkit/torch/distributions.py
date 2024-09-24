@@ -104,7 +104,9 @@ class TanhNormal(Distribution):
         else:
             return torch.tanh(z)
 
-    def log_prob(self, value, pre_tanh_value=None):
+    def log_prob(self, value, pre_tanh_value=None, return_original_pretanh_prob=False):
+
+
         """
         :param value: some value, x
         :param pre_tanh_value: arctanh(x)
@@ -113,10 +115,15 @@ class TanhNormal(Distribution):
         if pre_tanh_value is None:
             pre_tanh_value = torch.log(
                 (1+value) / (1-value)
-            ) / 2
-        return self.normal.log_prob(pre_tanh_value) - torch.log(
-            1 - value * value + self.epsilon
-        )
+            ) / 2    
+
+        if return_original_pretanh_prob:
+
+            return self.normal.log_prob(pre_tanh_value) , self.normal.log_prob(pre_tanh_value) - torch.log(
+            1 - value * value + self.epsilon)
+        else:
+            return  self.normal.log_prob(pre_tanh_value) - torch.log(
+            1 - value * value + self.epsilon)
 
     def sample(self, return_pretanh_value=False):
         z = self.normal.sample()
@@ -134,7 +141,6 @@ class TanhNormal(Distribution):
                 ptu.ones(self.normal_std.size())
             ).sample())
         )
-        # z.requires_grad_()
         if return_pretanh_value:
             return torch.tanh(z), z
         else:

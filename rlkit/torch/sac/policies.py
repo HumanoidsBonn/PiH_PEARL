@@ -9,9 +9,8 @@ from rlkit.torch.networks import Mlp
 from rlkit.torch.core import np_ify
 
 
-LOG_SIG_MAX = 2
-LOG_SIG_MIN = -20
-
+LOG_SIG_MAX = 1
+LOG_SIG_MIN = -10
 
 class TanhGaussianPolicy(Mlp, ExplorationPolicy):
     """
@@ -52,6 +51,9 @@ class TanhGaussianPolicy(Mlp, ExplorationPolicy):
         self.latent_dim = latent_dim
         self.log_std = None
         self.std = std
+
+        print(" initiated policy network with input size ==",obs_dim) 
+
         if std is None:
             last_hidden_size = obs_dim
             if len(hidden_sizes) > 0:
@@ -63,21 +65,29 @@ class TanhGaussianPolicy(Mlp, ExplorationPolicy):
             self.log_std = np.log(std)
             assert LOG_SIG_MIN <= self.log_std <= LOG_SIG_MAX
 
-    def get_action(self, obs, deterministic=False):
-        actions = self.get_actions(obs, deterministic=deterministic)
+    def get_action(self, obs, deterministic=False,stricted_std=False):
+        actions = self.get_actions(obs, deterministic=deterministic,stricted_std=stricted_std)
         return actions[0, :], {}
 
     @torch.no_grad()
-    def get_actions(self, obs, deterministic=False):
-        outputs = self.forward(obs, deterministic=deterministic)[0]
+    def get_actions(self, obs, deterministic=False,stricted_std=False):
+        outputs = self.forward(obs, deterministic=deterministic,stricted_std=stricted_std)[0]
         return np_ify(outputs)
+
+
+    @torch.no_grad()
+    def get_actions_parameters(self,obs, deterministic=False,stricted_std=False,scale_std=None):
+        outputs = self.forward(obs, deterministic=deterministic,return_log_prob=True, return_original_pretanh_prob=True,return_detailed_log_prob=True,stricted_std=stricted_std,scale_std=scale_std)
+        return np_ify(outputs)
+
+
 
     def forward(
             self,
             obs,
             reparameterize=False,
             deterministic=False,
-            return_log_prob=False,
+            return_log_prob=False, return_original_pretanh_prob=False,return_detailed_log_prob=False, stricted_std=False,scale_std=None,
     ):
         """
         :param obs: Observation
@@ -85,17 +95,25 @@ class TanhGaussianPolicy(Mlp, ExplorationPolicy):
         :param return_log_prob: If True, return a sample and its log probability
         """
         h = obs
+
         for i, fc in enumerate(self.fcs):
             h = self.hidden_activation(fc(h))
         mean = self.last_fc(h)
         if self.std is None:
             log_std = self.last_fc_log_std(h)
             log_std = torch.clamp(log_std, LOG_SIG_MIN, LOG_SIG_MAX)
+            if stricted_std:
+                log_std = torch.clamp(log_std, LOG_SIG_MIN,-1.2 )
+            
             std = torch.exp(log_std)
+            
+            if scale_std is not None:
+                std= std * scale_std
         else:
             std = self.std
             log_std = self.log_std
-
+        original_pretanh_prob=None  
+        detailed_log_prob=None  
         log_prob = None
         expected_log_prob = None
         mean_action_log_prob = None
@@ -113,20 +131,23 @@ class TanhGaussianPolicy(Mlp, ExplorationPolicy):
                     action, pre_tanh_value = tanh_normal.sample(
                         return_pretanh_value=True
                     )
-                log_prob = tanh_normal.log_prob(
-                    action,
-                    pre_tanh_value=pre_tanh_value
-                )
+                if return_original_pretanh_prob:
+                    original_pretanh_prob, log_prob= tanh_normal.log_prob(action,pre_tanh_value=pre_tanh_value,return_original_pretanh_prob=True)
+                else:
+                    log_prob= tanh_normal.log_prob(action,pre_tanh_value=pre_tanh_value)
+
+                if return_detailed_log_prob:
+                    detailed_log_prob= log_prob
                 log_prob = log_prob.sum(dim=1, keepdim=True)
             else:
                 if reparameterize:
                     action = tanh_normal.rsample()
                 else:
                     action = tanh_normal.sample()
-
+          
         return (
             action, mean, log_std, log_prob, expected_log_prob, std,
-            mean_action_log_prob, pre_tanh_value,
+            mean_action_log_prob, pre_tanh_value,original_pretanh_prob,detailed_log_prob
         )
 
 

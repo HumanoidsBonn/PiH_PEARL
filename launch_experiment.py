@@ -20,43 +20,73 @@ import rlkit.torch.pytorch_util as ptu
 from configs.default import default_config
 
 
-def experiment(variant):
+import gym
 
+from gym.spaces.utils import flatdim,flatten
+
+
+
+def experiment(variant,action_error=False):
+    
     # create multi-task environment and sample tasks
-    env = NormalizedBoxEnv(ENVS[variant['env_name']](**variant['env_params']))
+    env = NormalizedBoxEnv(ENVS[variant['env_name']](**variant['env_params']),action_error=action_error)
     tasks = env.get_all_task_idx()
     obs_dim = int(np.prod(env.observation_space.shape))
+    print(" entered experiment function")
+    print(" running on ENV == ",variant['env_name'])
+    print("obs space (dimension)==",obs_dim , "  *****type==", type(env.observation_space))
+
     action_dim = int(np.prod(env.action_space.shape))
+    print("action space (dimension)==",action_dim , "  *****type==", type(env.action_space))
+
     reward_dim = 1
 
     # instantiate networks
     latent_dim = variant['latent_size']
-    context_encoder_input_dim = 2 * obs_dim + action_dim + reward_dim if variant['algo_params']['use_next_obs_in_context'] else obs_dim + action_dim + reward_dim
+    context_encoder_input_dim = 10 if variant['algo_params']['use_next_obs_in_context'] else obs_dim + action_dim + reward_dim   
+    print ("context encoder input dimension == ",context_encoder_input_dim)
+
     context_encoder_output_dim = latent_dim * 2 if variant['algo_params']['use_information_bottleneck'] else latent_dim
+
+    print("context encoder output dimension == ", context_encoder_output_dim)
     net_size = variant['net_size']
     recurrent = variant['algo_params']['recurrent']
     encoder_model = RecurrentEncoder if recurrent else MlpEncoder
 
+
+    path = variant['path_to_weights']
+
     context_encoder = encoder_model(
-        hidden_sizes=[200, 200, 200],
+        hidden_sizes=[200,200,200],
         input_size=context_encoder_input_dim,
         output_size=context_encoder_output_dim,
     )
+
+
     qf1 = FlattenMlp(
         hidden_sizes=[net_size, net_size, net_size],
         input_size=obs_dim + action_dim + latent_dim,
         output_size=1,
     )
+
+
+
     qf2 = FlattenMlp(
         hidden_sizes=[net_size, net_size, net_size],
         input_size=obs_dim + action_dim + latent_dim,
         output_size=1,
     )
+
+
+
     vf = FlattenMlp(
         hidden_sizes=[net_size, net_size, net_size],
         input_size=obs_dim + latent_dim,
         output_size=1,
     )
+
+
+
     policy = TanhGaussianPolicy(
         hidden_sizes=[net_size, net_size, net_size],
         obs_dim=obs_dim + latent_dim,
@@ -85,8 +115,11 @@ def experiment(variant):
         qf1.load_state_dict(torch.load(os.path.join(path, 'qf1.pth')))
         qf2.load_state_dict(torch.load(os.path.join(path, 'qf2.pth')))
         vf.load_state_dict(torch.load(os.path.join(path, 'vf.pth')))
+        print("finished loading networks")
         # TODO hacky, revisit after model refactor
-        algorithm.networks[-2].load_state_dict(torch.load(os.path.join(path, 'target_vf.pth')))
+
+        algorithm.networks[-1].load_state_dict(torch.load(os.path.join(path, 'target_vf.pth')))
+        algorithm.networks[-2].load_state_dict(torch.load(os.path.join(path, 'vf.pth')))
         policy.load_state_dict(torch.load(os.path.join(path, 'policy.pth')))
 
     # optional GPU mode
@@ -127,6 +160,7 @@ def deep_update_dict(fr, to):
 @click.option('--docker', is_flag=True, default=False)
 @click.option('--debug', is_flag=True, default=False)
 def main(config, gpu, docker, debug):
+ 
 
     variant = default_config
     if config:
@@ -135,7 +169,7 @@ def main(config, gpu, docker, debug):
         variant = deep_update_dict(exp_params, variant)
     variant['util_params']['gpu_id'] = gpu
 
-    experiment(variant)
+    experiment(variant,action_error=True)
 
 if __name__ == "__main__":
     main()

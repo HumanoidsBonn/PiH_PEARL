@@ -48,7 +48,7 @@ _tabular_fds = {}
 _tabular_header_written = set()
 
 _snapshot_dir = None
-_snapshot_mode = 'all'
+_snapshot_mode = 'last'
 _snapshot_gap = 1
 
 _log_tabular_only = False
@@ -260,6 +260,10 @@ def save_itr_params(itr, params_dict):
     # NOTE: assumes dict is ordered, should fix someday
     names = params_dict.keys()
     params = params_dict.values()
+    _snapshot_dir=get_snapshot_dir()
+
+    _snapshot_mode='all'
+
     if _snapshot_dir:
         if _snapshot_mode == 'all':
             # save for every training iteration
