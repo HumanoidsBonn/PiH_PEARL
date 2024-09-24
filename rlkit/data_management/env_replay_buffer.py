@@ -162,14 +162,8 @@ def get_dim(space):
     elif hasattr(space, 'flat_dim'):
         return space.flat_dim
     else:
-        # import OldBox here so it is not necessary to have rand_param_envs 
-        # installed if not running the rand_param envs
-        from rand_param_envs.gym.spaces.box import Box as OldBox
-        if isinstance(space, OldBox):
-            return space.low.size
 
-
-        elif isinstance(space, np.ndarray):
+        if isinstance(space, np.ndarray):
             return np.prod(space.shape)
         else:
             raise TypeError("Unknown space: {}".format(space))
