@@ -66,7 +66,7 @@ The file `progress.csv` contains statistics logged over the course of training.
 We recommend `viskit` for visualizing learning curves: https://github.com/vitchyr/viskit
 
 Network weights are also snapshotted during training.
-To evaluate a learned policy after training has concluded, run `sim_policy.py`.
+To evaluate a learned policy after training has concluded, run `sim_policy.py` or `play.py`.
 This script will run a given policy across a set of evaluation tasks and optionally generate a video of these trajectories.
 Rendering is offline and the video is saved to the experiment folder.
 
